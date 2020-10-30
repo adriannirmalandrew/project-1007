@@ -128,8 +128,9 @@ public class ServerMain {
 						break;
 					}
 					case "login": {
+						String username = (String)reqJson.get("username");
 						//Call login function:
-						String sessionId = login(conn, (String)reqJson.get("username"), (String)reqJson.get("password"));
+						String sessionId = login(conn, username, (String)reqJson.get("password"));
 						if(sessionId == null)
 							tempOut.write("ERROR\n", 0, 6);
 						else {
@@ -144,6 +145,7 @@ public class ServerMain {
 								tempOut.write("ERROR\n", 0, 6);
 								break;
 							}
+							System.out.println("User " + username + " logged in.");
 							tempOut.write("DONE\n", 0, 5);
 							tempOut.write(sessionId + "\n", 0, sessionId.length() + 1);
 						}
@@ -173,6 +175,7 @@ public class ServerMain {
 							//Close and remove socket connection:
 							userSockets.get(sessionId).close();
 							userSockets.remove(sessionId);
+							System.out.println("Session " + sessionId + " logged out.");
 							tempOut.write("DONE\n", 0, 5);
 						}
 						else {
