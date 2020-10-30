@@ -12,24 +12,21 @@ import org.json.simple.*;
 import org.json.simple.parser.*;
 
 public class ClientMain extends Application {
+	//Server IP Address:
+	private static String ipAddress;
 	//Session ID:
 	private static String sessionId;
-	//Username:
-	private static String userName;
 	//Accept inSock on 2021
+	private static ServerSocket inServerSock;
 	private static Socket inSock;
 	private static BufferedReader inRead;
-	
 	//Message receiver thread:
 	private static Thread msgRecv;
 	
 	@Override
 	public void start(Stage stage) {
 		//Set up window:
-		Group group = new Group();
-		Scene scene = new Scene(group, 600, 400);
 		stage.setTitle("Digital Assignment 1 and 2");
-		stage.setScene(scene);
 		
 		//Create login pane:
 		BorderPane loginPane= new BorderPane();
@@ -63,8 +60,27 @@ public class ClientMain extends Application {
 		//Create chat pane:
 		GridPane chatPane = new GridPane();
 		chatPane.setMinSize(600, 400);
+		chatPane.setPadding(new Insets(10, 20, 20, 20));
+		chatPane.setHgap(5); dialog.setVgap(5);
+		Label userLabel = new Label();
+		chatPane.add(userLabel, 0, 0);
+		Button logout = new Button("Logout");
+		chatPane.add(logout, 1, 0);
 		TextArea msgArea = new TextArea();
-		chatPane.add(msgArea, 0, 0);
+		chatPane.add(msgArea, 0, 1, 2, 1);
+		TextField sendField = new TextField();
+		chatPane.add(sendField, 0, 2);
+		Button send = new Button("Send");
+		chatPane.add(send, 1, 2);
+		
+		//Scenes:
+		Scene loginScene = new Scene(loginPane, 600, 400);
+		Scene chatScene = new Scene(chatPane, 600, 400);
+		
+		//Open receiving connection:
+		try {
+			ClientMain.inServerSock = new ServerSocket(2021);
+		} catch(IOException io1) {}
 		
 		//Register button action:
 		register.setOnAction(e -> {
@@ -120,8 +136,8 @@ public class ClientMain extends Application {
 				BufferedWriter tempOut = new BufferedWriter(new OutputStreamWriter(tempSock.getOutputStream()));
 				tempOut.write(loginObjString + "\n", 0, loginObjString.length() + 1);
 				tempOut.flush();
-				//Open receiving connection:
-				ClientMain.inSock = new ServerSocket(2021).accept();
+				//Open receiving stream:
+				ClientMain.inSock = ClientMain.inServerSock.accept();
 				//Receive response:
 				BufferedReader tempIn = new BufferedReader(new InputStreamReader(tempSock.getInputStream()));
 				String resp = tempIn.readLine();
@@ -132,8 +148,9 @@ public class ClientMain extends Application {
 					Alert doneAlert = new Alert(AlertType.INFORMATION, "Welcome, " + username.getText());
 					doneAlert.show();
 					//Change panes:
-					stage.setScene(new Scene(chatPane, 600, 400));
+					stage.setScene(chatScene);
 					stage.show();
+					
 					//Start a message updater thread:
 					ClientMain.msgRecv = new Thread(new Runnable() {
 						public void run() {
@@ -176,15 +193,99 @@ public class ClientMain extends Application {
 				tempOut.close();
 				tempIn.close();
 				tempSock.close();
+				//Set variable:
+				userLabel.setText("Logged in as: " + username.getText());
 			}
 			catch(IOException ie1) {
 				Alert connFail = new Alert(AlertType.ERROR, "Login error: " + ie1.getMessage());
 				connFail.show();
 			}
+			ClientMain.ipAddress = serverIp.getText();
 		});
 		
-		//Start with server picker active:
-		stage.setScene(new Scene(loginPane, 600, 400));
+		//Send button action:
+		send.setOnAction(e -> {
+			//Connect:
+			Socket tempSock = null;
+			try {
+				tempSock = new Socket(serverIp.getText(), 2020);
+				//Create and send JSON request:
+				JSONObject messageObj = new JSONObject();
+				messageObj.put("action", "message");
+				messageObj.put("sessionid", ClientMain.sessionId);
+				messageObj.put("message", sendField.getText());
+				String messageObjString = messageObj.toString();
+				BufferedWriter tempOut = new BufferedWriter(new OutputStreamWriter(tempSock.getOutputStream()));
+				tempOut.write(messageObjString + "\n", 0, messageObjString.length() + 1);
+				tempOut.flush();
+				//Receive response:
+				BufferedReader tempIn = new BufferedReader(new InputStreamReader(tempSock.getInputStream()));
+				String resp = tempIn.readLine();
+				if(resp.equals("ERROR")) {
+					Alert regAlert = new Alert(AlertType.ERROR, "Error sending message!");
+					regAlert.show();
+				}
+				//Clear message field:
+				sendField.setText("");
+				//Close temp socket:
+				tempOut.close();
+				tempIn.close();
+				tempSock.close();
+			}
+			catch(IOException ie1) {
+				Alert connFail = new Alert(AlertType.ERROR, "Sending error: " + ie1.getMessage());
+				connFail.show();
+			}
+		});
+		
+		//Logout button action:
+		logout.setOnAction(e -> {
+			//Connect:
+			Socket tempSock = null;
+			try {
+				tempSock = new Socket(serverIp.getText(), 2020);
+				//Create and send JSON request:
+				JSONObject logoutObj = new JSONObject();
+				logoutObj.put("action", "logout");
+				logoutObj.put("sessionid", ClientMain.sessionId);
+				String logoutObjString = logoutObj.toString();
+				BufferedWriter tempOut = new BufferedWriter(new OutputStreamWriter(tempSock.getOutputStream()));
+				tempOut.write(logoutObjString + "\n", 0, logoutObjString.length() + 1);
+				tempOut.flush();
+				//Get response:
+				BufferedReader tempIn = new BufferedReader(new InputStreamReader(tempSock.getInputStream()));
+				String resp = tempIn.readLine();
+				if(resp.equals("DONE")) {
+					Alert doneAlert = new Alert(AlertType.INFORMATION, "Bye, " + username.getText());
+					doneAlert.show();
+				}
+				else {
+					Alert regAlert = new Alert(AlertType.ERROR, "Error logging out!");
+					regAlert.show();
+				}
+				//Switch back to login pane:
+				password.setText("");
+				stage.setScene(loginScene);
+				stage.show();
+				//Close message input:
+				ClientMain.inRead.close();
+				//Stop message receiving thread:
+				ClientMain.msgRecv.interrupt();
+				//Close temp socket:
+				tempOut.close();
+				tempIn.close();
+				tempSock.close();
+			}
+			catch(IOException ie1) {
+				Alert connFail = new Alert(AlertType.ERROR, "Logout error: " + ie1.getMessage());
+				connFail.show();
+			}
+			ClientMain.ipAddress = null;
+			ClientMain.sessionId = null;
+		});
+		
+		//Start with login pane active:
+		stage.setScene(loginScene);
 		stage.show();
 	}
 	
